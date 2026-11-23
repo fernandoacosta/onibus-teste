@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Ônibus">
+<title>Teste do Ônibus</title>
+<style>
+  :root {
+    --sky-top: #7cc8ff;
+    --sky-bottom: #d8f1ff;
+    --grass: #7ed957;
+    --grass-dark: #5fbf3c;
+    --road: #4a4f5a;
+    --bus: #ffc62b;
+    --bus-dark: #e8a400;
+    --ink: #1d2433;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    background: var(--sky-top);
+    font-family: ui-rounded, "SF Pro Rounded", "Arial Rounded MT Bold", system-ui, sans-serif;
+    color: var(--ink);
+    user-select: none; -webkit-user-select: none; touch-action: none;
+  }
+  #world { position: fixed; inset: 0; background: linear-gradient(var(--sky-top), var(--sky-bottom) 62%); }
+
+  /* sol */
+  .sun { position: absolute; top: 7vh; right: 9vw; width: 15vmin; height: 15vmin; border-radius: 50%;
+    background: #ffe066; box-shadow: 0 0 0 2.2vmin #fff3b0aa, 0 0 8vmin #ffe06699; }
+
+  /* camadas com rolagem */
+  .layer { position: absolute; left: 0; width: 100%; background-repeat: repeat-x; will-change: background-position; }
+  #clouds { top: 6vh; height: 28vh; background-size: 70vmin 100%;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 120'%3E%3Cg fill='white'%3E%3Cellipse cx='70' cy='60' rx='40' ry='24'/%3E%3Cellipse cx='100' cy='46' rx='34' ry='28'/%3E%3Cellipse cx='130' cy='62' rx='36' ry='22'/%3E%3Cellipse cx='240' cy='96' rx='26' ry='14'/%3E%3Cellipse cx='260' cy='88' rx='22' ry='16'/%3E%3C/g%3E%3C/svg%3E"); }
+  #hills { bottom: 30vh; height: 26vh; background-size: 90vmin 100%;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 120' preserveAspectRatio='none'%3E%3Cpath d='M0 120 L0 70 Q60 10 130 60 Q190 100 250 50 Q320 0 400 70 L400 120Z' fill='%2397e07a'/%3E%3Cg%3E%3Crect x='86' y='52' width='8' height='30' fill='%238a5a2b'/%3E%3Ccircle cx='90' cy='44' r='20' fill='%233fa34d'/%3E%3Crect x='296' y='40' width='8' height='30' fill='%238a5a2b'/%3E%3Ccircle cx='300' cy='32' r='18' fill='%2348b358'/%3E%3C/g%3E%3C/svg%3E"); }
+  #grass { bottom: 22vh; height: 9vh; background: var(--grass); }
+  #road { bottom: 0; height: 23vh; background-color: var(--road);
+    background-size: 30vmin 100%;
+    background-image: linear-gradient(90deg, var(--road) 55%, transparent 55%),
+                      linear-gradient(transparent 46%, #fff 46%, #fff 54%, transparent 54%); }
+  #road::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 1.2vh; background: #c9ccd3; }
+
+  /* ônibus */
+  #bus { position: absolute; bottom: 12vh; left: 50%; width: min(62vw, 82vh); transform: translateX(-50%); }
+  #busInner { transform-origin: 50% 100%; }
+  #bus svg { display: block; width: 100%; height: auto; overflow: visible; }
+  #plate { transform-box: fill-box; transform-origin: center; }
+  .wheel { transform-box: fill-box; transform-origin: center; }
+  #door { transition: transform .35s cubic-bezier(.3,1.4,.5,1); transform-box: fill-box; transform-origin: left center; }
+  .door-open #door { transform: scaleX(.12); }
+  #beam { opacity: 0; transition: opacity .25s; }
+  .lights-on #beam { opacity: 1; }
+  .lights-on .headlight { fill: #fffbe0; }
+  .face-eye { transition: transform .12s; transform-box: fill-box; transform-origin: center; }
+  .blink .face-eye { transform: scaleY(.1); }
+
+  .bump { animation: bump .5s cubic-bezier(.3,1.8,.5,1); }
+  @keyframes bump { 0%{transform:translateY(0) scale(1)} 30%{transform:translateY(-14%) scale(1.03,.97)} 100%{transform:translateY(0) scale(1)} }
+
+  /* notinhas da buzina */
+  .note { position: absolute; font-size: 9vmin; font-weight: 900; color: #ff4d6d; pointer-events: none;
+    text-shadow: 0 .5vmin 0 #fff; animation: float 1s ease-out forwards; }
+  @keyframes float { from { opacity: 1; transform: translate(-50%, 0) scale(.6) rotate(-8deg); }
+                     to   { opacity: 0; transform: translate(-50%, -22vh) scale(1.3) rotate(8deg); } }
+
+  /* HUD */
+  #hud { position: fixed; top: max(14px, env(safe-area-inset-top)); left: 16px; right: 16px;
+    display: flex; gap: 10px; align-items: flex-start; flex-wrap: wrap; pointer-events: none; z-index: 5; }
+  .pill { background: #ffffffe6; border-radius: 999px; padding: 10px 16px; font-size: 16px; font-weight: 700;
+    box-shadow: 0 4px 0 #0000001a; display: inline-flex; align-items: center; gap: 8px; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; background: #ff5c5c; flex: none; }
+  .ok .dot { background: #2fc25b; }
+  #diag { position: fixed; left: 16px; right: 16px; bottom: max(14px, env(safe-area-inset-bottom));
+    background: #0d1220cc; color: #d9f2ff; font: 13px/1.5 ui-monospace, Menlo, monospace;
+    border-radius: 14px; padding: 10px 14px; z-index: 5; display: none; white-space: pre-wrap; }
+  .show-diag #diag { display: block; }
+
+  #legend { position: fixed; top: max(14px, env(safe-area-inset-top)); right: 16px; z-index: 5;
+    display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; max-width: 60vw; }
+  .k { background: #ffffffd9; border-radius: 12px; padding: 6px 10px; font-weight: 700; font-size: 14px; white-space: nowrap; }
+  .k b { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%;
+    background: var(--ink); color: #fff; font-size: 12px; margin-right: 4px; vertical-align: -5px; }
+  .k.x b { color: #8fb8ff } .k.o b { color: #ff7a8a } .k.t b { color: #5fe0b0 } .k.s b { color: #f2a6ff }
+  @media (max-width: 700px) { #legend { display: none; } }
+
+  /* tela inicial */
+  #start { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; text-align: center;
+    background: #1d2433b3; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); color: #fff; padding: 16px; }
+  #start h1 { font-size: clamp(36px, 8vmin, 80px); margin: 0 0 12px; }
+  #start p { font-size: clamp(18px, 3.2vmin, 28px); margin: 6px 0; opacity: .92; }
+  #start .go { display: inline-block; margin-top: 24px; background: var(--bus); color: var(--ink);
+    font-size: clamp(24px, 5vmin, 44px); font-weight: 900; padding: 18px 40px; border-radius: 999px;
+    box-shadow: 0 8px 0 var(--bus-dark); animation: pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 50% { transform: scale(1.06); } }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div id="world">
+  <div class="sun"></div>
+  <div id="clouds" class="layer"></div>
+  <div id="hills" class="layer"></div>
+  <div id="grass" class="layer"></div>
+  <div id="road" class="layer"></div>
+
+  <div id="bus">
+    <div id="busInner">
+      <svg viewBox="0 0 420 230" aria-label="Ônibus">
+        <!-- facho do farol -->
+        <path id="beam" d="M404 150 L520 118 L520 196 Z" fill="#fff6b3" opacity=".7"/>
+        <!-- sombra -->
+        <ellipse cx="210" cy="222" rx="190" ry="8" fill="#00000026"/>
+        <!-- carroceria -->
+        <rect x="14" y="20" width="392" height="170" rx="34" fill="var(--bus)"/>
+        <rect x="14" y="140" width="392" height="50" rx="20" fill="var(--bus-dark)"/>
+        <rect x="14" y="128" width="392" height="12" fill="#ff6b3d"/>
+        <!-- teto -->
+        <rect x="60" y="8" width="240" height="18" rx="9" fill="var(--bus-dark)"/>
+        <!-- janelas com passageiros -->
+        <g>
+          <rect x="38" y="44" width="62" height="62" rx="14" fill="#bfe9ff"/>
+          <rect x="112" y="44" width="62" height="62" rx="14" fill="#bfe9ff"/>
+          <rect x="186" y="44" width="62" height="62" rx="14" fill="#bfe9ff"/>
+          <circle cx="69" cy="86" r="16" fill="#f4c7a1"/><circle cx="63" cy="83" r="2.4" fill="#1d2433"/><circle cx="75" cy="83" r="2.4" fill="#1d2433"/><path d="M63 91 Q69 96 75 91" stroke="#1d2433" stroke-width="2.4" fill="none" stroke-linecap="round"/><path d="M53 80 Q69 58 85 80" fill="#6b3b1f"/>
+          <circle cx="217" cy="86" r="16" fill="#a8704a"/><circle cx="211" cy="83" r="2.4" fill="#1d2433"/><circle cx="223" cy="83" r="2.4" fill="#1d2433"/><path d="M211 91 Q217 96 223 91" stroke="#1d2433" stroke-width="2.4" fill="none" stroke-linecap="round"/><circle cx="217" cy="68" r="9" fill="#1d2433"/>
+        </g>
+        <!-- porta -->
+        <rect x="262" y="44" width="58" height="140" rx="10" fill="#7a8494"/>
+        <g id="door">
+          <rect x="262" y="44" width="58" height="140" rx="10" fill="#8fd3ff" stroke="var(--bus-dark)" stroke-width="5"/>
+          <line x1="291" y1="48" x2="291" y2="180" stroke="var(--bus-dark)" stroke-width="4"/>
+        </g>
+        <!-- frente: para-brisa com olhos -->
+        <path d="M334 44 H372 Q396 44 398 70 L400 110 H334 Z" fill="#bfe9ff"/>
+        <g class="face">
+          <ellipse class="face-eye" cx="356" cy="72" rx="7" ry="10" fill="#1d2433"/>
+          <ellipse class="face-eye" cx="380" cy="72" rx="7" ry="10" fill="#1d2433"/>
+          <circle cx="358" cy="68" r="2.4" fill="#fff"/><circle cx="382" cy="68" r="2.4" fill="#fff"/>
+          <path d="M356 92 Q368 102 382 92" stroke="#1d2433" stroke-width="4" fill="none" stroke-linecap="round"/>
+        </g>
+        <!-- farol e lanterna -->
+        <circle class="headlight" cx="398" cy="160" r="11" fill="#ffe680" stroke="#fff" stroke-width="3"/>
+        <rect x="10" y="150" width="10" height="22" rx="4" fill="#ff4d4d"/>
+        <!-- placa -->
+        <rect x="150" y="150" width="70" height="26" rx="6" fill="#fff" stroke="#1d2433" stroke-width="2"/>
+        <text id="plate" x="185" y="169" font-size="17" font-weight="900" text-anchor="middle" fill="#1d2433" font-family="system-ui">BI-BI</text>
+        <!-- rodas -->
+        <g class="wheel" id="w1"><circle cx="96" cy="192" r="30" fill="#1d2433"/><circle cx="96" cy="192" r="13" fill="#c9ccd3"/><rect x="93" y="166" width="6" height="52" rx="3" fill="#c9ccd3"/></g>
+        <g class="wheel" id="w2"><circle cx="330" cy="192" r="30" fill="#1d2433"/><circle cx="330" cy="192" r="13" fill="#c9ccd3"/><rect x="327" y="166" width="6" height="52" rx="3" fill="#c9ccd3"/></g>
+      </svg>
+    </div>
+  </div>
+</div>
+
+<div id="hud">
+  <div class="pill" id="padStatus"><span class="dot"></span><span id="padText">Aperte um botão do controle</span></div>
+</div>
+<div id="legend">
+  <span class="k">← → anda</span>
+  <span class="k x"><b>✕</b>buzina</span>
+  <span class="k o"><b>○</b>porta</span>
+  <span class="k t"><b>△</b>farol</span>
+  <span class="k s"><b>□</b>pula</span>
+</div>
+<div id="diag"></div>
+
+<div id="start">
+  <div>
+    <h1>🚌 Bi-bi!</h1>
+    <p>Página de teste do controle e do som</p>
+    <p>Depois de começar: <b>Options</b> no controle mostra o diagnóstico</p>
+    <div class="go">Toque para começar</div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const bus = $('bus'), busInner = $('busInner'), world = $('world');
+  const layers = [
+    { el: $('clouds'), f: 0.08 }, { el: $('hills'), f: 0.3 },
+    { el: $('road'), f: 1 },
+  ];
+  const wheels = [$('w1'), $('w2')];
+  const plate = $('plate');
+
+  // ---------- áudio (sintetizado, sem arquivos) ----------
+  let ac = null;
+  function audio() {
+    if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)();
+    if (ac.state === 'suspended') ac.resume();
+    return ac;
+  }
+  function tone(freqs, start, dur, type = 'square', vol = 0.18) {
+    const a = audio(), g = a.createGain();
+    g.gain.setValueAtTime(0, start);
+    g.gain.linearRampToValueAtTime(vol, start + 0.02);
+    g.gain.setValueAtTime(vol, start + dur - 0.04);
+    g.gain.linearRampToValueAtTime(0, start + dur);
+    const lp = a.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1800;
+    g.connect(lp).connect(a.destination);
+    freqs.forEach((f) => { const o = a.createOscillator(); o.type = type; o.frequency.value = f; o.connect(g); o.start(start); o.stop(start + dur + 0.02); });
+  }
+  function horn() {
+    const t = audio().currentTime;
+    tone([392, 494], t, 0.16);           // bi
+    tone([392, 494], t + 0.22, 0.26);    // biii
+  }
+  function chime(up) {
+    const t = audio().currentTime;
+    const seq = up ? [523, 659, 784] : [784, 659, 523];
+    seq.forEach((f, i) => tone([f], t + i * 0.09, 0.12, 'sine', 0.2));
+  }
+  function boing() {
+    const a = audio(), t = a.currentTime, o = a.createOscillator(), g = a.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(220, t); o.frequency.exponentialRampToValueAtTime(660, t + 0.18);
+    g.gain.setValueAtTime(0.25, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+    o.connect(g).connect(a.destination); o.start(t); o.stop(t + 0.4);
+  }
+
+  // ---------- ações ----------
+  let lastPad = null;
+  function rumble(ms = 200, strong = 0.8) {
+    const act = lastPad && lastPad.vibrationActuator;
+    if (act && act.playEffect) act.playEffect('dual-rumble', { duration: ms, strongMagnitude: strong, weakMagnitude: 0.5 }).catch(() => {});
+  }
+  function note(text) {
+    const r = bus.getBoundingClientRect(), n = document.createElement('div');
+    n.className = 'note'; n.textContent = text;
+    n.style.left = (r.left + r.width * (0.3 + Math.random() * 0.4)) + 'px';
+    n.style.top = (r.top - 20) + 'px';
+    document.body.appendChild(n); setTimeout(() => n.remove(), 1000);
+  }
+  const actions = {
+    horn() { horn(); rumble(380, 1); note('♪'); setTimeout(() => note('♫'), 220); },
+    door() { const open = bus.classList.toggle('door-open'); chime(open); rumble(120, 0.4); },
+    lights() { const on = bus.classList.toggle('lights-on'); tone([on ? 880 : 440], audio().currentTime, 0.08, 'sine', 0.2); },
+    jump() { busInner.classList.remove('bump'); void busInner.offsetWidth; busInner.classList.add('bump'); boing(); rumble(150, 0.6); },
+  };
+
+  // ---------- estado de movimento ----------
+  let speed = 0, scroll = 0, facing = 1, wheelAngle = 0;
+  let inputX = 0;                 // -1..1 vindo de controle/teclado/toque
+  const keys = new Set();
+  let touchDir = 0;
+
+  // ---------- controle (Gamepad API) ----------
+  const NAMES = ['✕ (0)', '○ (1)', '□ (2)', '△ (3)', 'L1 (4)', 'R1 (5)', 'L2 (6)', 'R2 (7)', 'Create (8)', 'Options (9)', 'L3 (10)', 'R3 (11)', '↑ (12)', '↓ (13)', '← (14)', '→ (15)', 'PS (16)', 'Touchpad (17)'];
+  const prev = {};
+  let lastPressed = '—';
+  const padStatus = $('padStatus'), padText = $('padText'), diag = $('diag');
+
+  function pollPads() {
+    const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+    if (!pads.length) {
+      padStatus.classList.remove('ok');
+      padText.textContent = navigator.getGamepads ? 'Aperte um botão do controle' : 'Navegador sem suporte a controle';
+      return 0;
+    }
+    padStatus.classList.add('ok');
+    padText.textContent = pads.length === 1 ? 'Controle conectado' : pads.length + ' controles conectados';
+    let x = 0;
+    for (const p of pads) {
+      lastPad = p;
+      const pressed = (i) => !!(p.buttons[i] && p.buttons[i].pressed);
+      const ax = p.axes[0] || 0;
+      if (Math.abs(ax) > 0.2) x += ax;
+      if (pressed(14)) x -= 1;
+      if (pressed(15)) x += 1;
+      const was = prev[p.index] || [];
+      const now = p.buttons.map((b) => b.pressed);
+      now.forEach((v, i) => { if (v && !was[i]) onButton(i); });
+      prev[p.index] = now;
+    }
+    if (bus.ownerDocument.body.classList.contains('show-diag')) {
+      diag.textContent = pads.map((p) =>
+        `#${p.index} ${p.id}\nmapping: "${p.mapping || '(vazio)'}"  vibração: ${p.vibrationActuator ? 'sim' : 'não'}\n` +
+        `botões: ${p.buttons.map((b, i) => b.pressed ? i : null).filter((v) => v !== null).join(', ') || '—'}\n` +
+        `eixos: ${p.axes.map((a) => a.toFixed(2)).join('  ')}`
+      ).join('\n\n') + `\núltimo botão: ${lastPressed}`;
+    }
+    return Math.max(-1, Math.min(1, x));
+  }
+  function onButton(i) {
+    lastPressed = NAMES[i] || `botão ${i}`;
+    if (!started) { begin(); return; }
+    if (i === 0) actions.horn();
+    else if (i === 1) actions.door();
+    else if (i === 3) actions.lights();
+    else if (i === 2) actions.jump();
+    else if (i === 9) document.body.classList.toggle('show-diag');
+  }
+  window.addEventListener('gamepadconnected', () => { if (started) chime(true); });
+  window.addEventListener('gamepaddisconnected', () => { if (started) chime(false); });
+
+  // ---------- teclado (para testar no Mac) ----------
+  addEventListener('keydown', (e) => {
+    if (!started) { begin(); return; }
+    if (e.repeat) return;
+    keys.add(e.key);
+    if (e.key === ' ' || e.key === 'x') actions.horn();
+    if (e.key === 'o') actions.door();
+    if (e.key === 'f') actions.lights();
+    if (e.key === 'ArrowUp') actions.jump();
+    if (e.key === 'd') document.body.classList.toggle('show-diag');
+  });
+  addEventListener('keyup', (e) => keys.delete(e.key));
+
+  // ---------- toque (o iPad sozinho também funciona) ----------
+  addEventListener('pointerdown', (e) => {
+    if (!started) return;
+    if (e.target.closest('#padStatus')) { document.body.classList.toggle('show-diag'); return; }
+    const r = bus.getBoundingClientRect();
+    if (e.clientX > r.left && e.clientX < r.right && e.clientY > r.top && e.clientY < r.bottom) { actions.horn(); return; }
+    touchDir = e.clientX < innerWidth / 2 ? -1 : 1;
+  });
+  addEventListener('pointerup', () => (touchDir = 0));
+  addEventListener('pointercancel', () => (touchDir = 0));
+  $('hud').style.pointerEvents = 'none'; padStatus.style.pointerEvents = 'auto';
+
+  // ---------- início ----------
+  let started = false;
+  function begin() {
+    if (started) return;
+    started = true;
+    audio();
+    $('start').classList.add('hidden');
+    const el = document.documentElement;
+    const fs = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (fs) try { const p = fs.call(el); if (p && p.catch) p.catch(() => {}); } catch (_) {}
+    setTimeout(horn, 150);
+  }
+  $('start').addEventListener('pointerdown', (e) => { e.stopPropagation(); begin(); });
+
+  // piscar de olhos
+  setInterval(() => { bus.classList.add('blink'); setTimeout(() => bus.classList.remove('blink'), 140); }, 3200);
+
+  // ---------- loop ----------
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    let x = pollPads();
+    if (keys.has('ArrowLeft')) x -= 1;
+    if (keys.has('ArrowRight')) x += 1;
+    x += touchDir;
+    inputX = started ? Math.max(-1, Math.min(1, x)) : 0;
+
+    const target = inputX * 900;                  // px/s
+    speed += (target - speed) * Math.min(1, dt * (inputX ? 2.5 : 1.6));
+    if (Math.abs(speed) < 1) speed = 0;
+    if (inputX) facing = inputX > 0 ? 1 : -1;
+
+    scroll += speed * dt;
+    for (const l of layers) l.el.style.backgroundPosition = `${-scroll * l.f}px 0`;
+    $('clouds').style.backgroundPosition = `${-scroll * 0.08 - now * 0.01}px 0`;
+
+    wheelAngle += speed * dt * 0.9;
+    wheels.forEach((w) => (w.style.transform = `rotate(${wheelAngle}deg)`));
+
+    const tilt = -speed / 900 * 2.5;
+    const bob = Math.abs(speed) > 30 ? Math.sin(now / 70) * 0.6 : 0;
+    bus.style.transform = `translateX(-50%) translateY(${bob}%) scaleX(${facing}) rotate(${tilt * facing}deg)`;
+    plate.style.transform = `scaleX(${facing})`;
+
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
