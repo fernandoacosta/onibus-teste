@@ -191,12 +191,30 @@
   const wheels = [$('w1'), $('w2')];
   const plate = $('plate');
 
+  // ---------- registro de eventos (diagnóstico das travadas) ----------
+  const T0 = performance.now();
+  const logLines = [];
+  function log(msg) {
+    const t = ((performance.now() - T0) / 1000).toFixed(1).padStart(6);
+    logLines.push(`${t}s  ${msg}`);
+    if (logLines.length > 14) logLines.shift();
+  }
+  log('página aberta');
+  document.addEventListener('visibilitychange', () => log('página ' + (document.hidden ? 'ESCONDIDA' : 'visível de novo')));
+  addEventListener('blur', () => log('página PERDEU o foco'));
+  addEventListener('focus', () => log('página ganhou o foco'));
+  addEventListener('pagehide', () => log('pagehide'));
+  addEventListener('pageshow', () => log('pageshow'));
+
   // ---------- áudio (sintetizado, sem arquivos) ----------
   let ac = null;
   // Safari 17+: toca mesmo com o iPad no modo silencioso
   try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (_) {}
   function audio() {
-    if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)();
+    if (!ac) {
+      ac = new (window.AudioContext || window.webkitAudioContext)();
+      ac.onstatechange = () => log('som: ' + ac.state);
+    }
     if (ac.state !== 'running') ac.resume().catch(() => {});
     return ac;
   }
@@ -276,6 +294,8 @@
   function pollPads() {
     const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
     if (!pads.length) {
+      if (document.body.classList.contains('show-diag'))
+        diag.textContent = `nenhum controle visível\nsom: ${ac ? ac.state : 'não criado'}\n\n— registro —\n${logLines.join('\n')}`;
       padStatus.classList.remove('ok');
       padText.textContent = navigator.getGamepads ? 'Aperte um botão do controle' : 'Navegador sem suporte a controle';
       return 0;
@@ -285,6 +305,11 @@
     let x = 0;
     for (const p of pads) {
       lastPad = p;
+      // o controle manda dados sem parar; se o timestamp congela é porque nada está chegando
+      if (p.timestamp !== lastPadTs) {
+        if (padSilentLogged) log(`dados do controle VOLTARAM (${((performance.now() - lastPadChange) / 1000).toFixed(1)}s parado)`);
+        lastPadTs = p.timestamp; lastPadChange = performance.now(); padSilentLogged = false;
+      }
       const pressed = (i) => !!(p.buttons[i] && p.buttons[i].pressed);
       const ax = p.axes[0] || 0;
       if (Math.abs(ax) > 0.2) x += ax;
@@ -302,12 +327,15 @@
         `eixos: ${p.axes.map((a) => a.toFixed(2)).join('  ')}`
       ).join('\n\n') + `\núltimo botão: ${lastPressed}` +
       `\nsom: ${ac ? ac.state : 'não criado'}  modo-silencioso-ignorado: ${navigator.audioSession ? 'sim' : 'não suportado'}` +
-      `\nnavegador: ${navigator.userAgent}`;
+      `\nnavegador: ${navigator.userAgent}` +
+      `\n\n— registro —\n${logLines.join('\n')}`;
     }
     return Math.max(-1, Math.min(1, x));
   }
+  let lastPadTs = 0, lastPadChange = performance.now(), padSilentLogged = false;
   function onButton(i) {
     lastPressed = NAMES[i] || `botão ${i}`;
+    log('apertou ' + lastPressed);
     if (!started) { nudgeStart(); return; }
     if (i === 0) actions.horn();
     else if (i === 1) actions.door();
@@ -315,8 +343,8 @@
     else if (i === 2) actions.jump();
     else if (i === 9) document.body.classList.toggle('show-diag');
   }
-  window.addEventListener('gamepadconnected', () => { if (started) chime(true); });
-  window.addEventListener('gamepaddisconnected', () => { if (started) chime(false); });
+  window.addEventListener('gamepadconnected', (e) => { log(`controle CONECTOU (#${e.gamepad.index})`); if (started) chime(true); });
+  window.addEventListener('gamepaddisconnected', (e) => { log(`controle DESCONECTOU (#${e.gamepad.index})`); if (started) chime(false); });
 
   // ---------- teclado (para testar no Mac) ----------
   addEventListener('keydown', (e) => {
@@ -371,9 +399,12 @@
   // ---------- loop ----------
   let last = performance.now();
   function frame(now) {
-    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    const gap = now - last;
+    if (gap > 300) log(`tela TRAVOU ${(gap / 1000).toFixed(1)}s`);
+    const dt = Math.min(0.05, gap / 1000); last = now;
     updateSound();
     let x = pollPads();
+    if (lastPad && !padSilentLogged && now - lastPadChange > 3000) { padSilentLogged = true; }
     if (keys.has('ArrowLeft')) x -= 1;
     if (keys.has('ArrowRight')) x += 1;
     x += touchDir;
