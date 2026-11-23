@@ -160,6 +160,7 @@
 
 <div id="hud">
   <div class="pill" id="padStatus"><span class="dot"></span><span id="padText">Aperte um botão do controle</span></div>
+  <div class="pill" id="sndStatus"><span class="dot"></span><span id="sndText">Som desligado</span></div>
 </div>
 <div id="legend">
   <span class="k">← → anda</span>
@@ -192,11 +193,21 @@
 
   // ---------- áudio (sintetizado, sem arquivos) ----------
   let ac = null;
+  // Safari 17+: toca mesmo com o iPad no modo silencioso
+  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (_) {}
   function audio() {
     if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)();
-    if (ac.state === 'suspended') ac.resume();
+    if (ac.state !== 'running') ac.resume().catch(() => {});
     return ac;
   }
+  // Só funciona dentro de um toque/clique/tecla de verdade (regra do Safari).
+  function unlockAudio() {
+    const a = audio();
+    const b = a.createBuffer(1, 1, 22050), src = a.createBufferSource();
+    src.buffer = b; src.connect(a.destination); src.start(0);
+  }
+  ['touchend', 'click', 'keydown'].forEach((ev) =>
+    addEventListener(ev, () => { if (!ac || ac.state !== 'running') unlockAudio(); }, true));
   function tone(freqs, start, dur, type = 'square', vol = 0.18) {
     const a = audio(), g = a.createGain();
     g.gain.setValueAtTime(0, start);
@@ -256,6 +267,12 @@
   let lastPressed = '—';
   const padStatus = $('padStatus'), padText = $('padText'), diag = $('diag');
 
+  const sndStatus = $('sndStatus'), sndText = $('sndText');
+  function updateSound() {
+    const ok = ac && ac.state === 'running';
+    sndStatus.classList.toggle('ok', !!ok);
+    sndText.textContent = ok ? 'Som ligado' : 'Som bloqueado: toque na tela';
+  }
   function pollPads() {
     const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
     if (!pads.length) {
@@ -283,13 +300,15 @@
         `#${p.index} ${p.id}\nmapping: "${p.mapping || '(vazio)'}"  vibração: ${p.vibrationActuator ? 'sim' : 'não'}\n` +
         `botões: ${p.buttons.map((b, i) => b.pressed ? i : null).filter((v) => v !== null).join(', ') || '—'}\n` +
         `eixos: ${p.axes.map((a) => a.toFixed(2)).join('  ')}`
-      ).join('\n\n') + `\núltimo botão: ${lastPressed}`;
+      ).join('\n\n') + `\núltimo botão: ${lastPressed}` +
+      `\nsom: ${ac ? ac.state : 'não criado'}  modo-silencioso-ignorado: ${navigator.audioSession ? 'sim' : 'não suportado'}` +
+      `\nnavegador: ${navigator.userAgent}`;
     }
     return Math.max(-1, Math.min(1, x));
   }
   function onButton(i) {
     lastPressed = NAMES[i] || `botão ${i}`;
-    if (!started) { begin(); return; }
+    if (!started) { nudgeStart(); return; }
     if (i === 0) actions.horn();
     else if (i === 1) actions.door();
     else if (i === 3) actions.lights();
@@ -315,28 +334,36 @@
   // ---------- toque (o iPad sozinho também funciona) ----------
   addEventListener('pointerdown', (e) => {
     if (!started) return;
-    if (e.target.closest('#padStatus')) { document.body.classList.toggle('show-diag'); return; }
+    if (e.target.closest('#padStatus, #sndStatus')) { document.body.classList.toggle('show-diag'); return; }
     const r = bus.getBoundingClientRect();
     if (e.clientX > r.left && e.clientX < r.right && e.clientY > r.top && e.clientY < r.bottom) { actions.horn(); return; }
     touchDir = e.clientX < innerWidth / 2 ? -1 : 1;
   });
   addEventListener('pointerup', () => (touchDir = 0));
   addEventListener('pointercancel', () => (touchDir = 0));
-  $('hud').style.pointerEvents = 'none'; padStatus.style.pointerEvents = 'auto';
+  $('hud').style.pointerEvents = 'none'; padStatus.style.pointerEvents = 'auto'; sndStatus.style.pointerEvents = 'auto';
 
   // ---------- início ----------
   let started = false;
   function begin() {
     if (started) return;
     started = true;
-    audio();
+    unlockAudio();
     $('start').classList.add('hidden');
     const el = document.documentElement;
     const fs = el.requestFullscreen || el.webkitRequestFullscreen;
     if (fs) try { const p = fs.call(el); if (p && p.catch) p.catch(() => {}); } catch (_) {}
     setTimeout(horn, 150);
   }
-  $('start').addEventListener('pointerdown', (e) => { e.stopPropagation(); begin(); });
+  const startEl = $('start');
+  startEl.addEventListener('pointerdown', (e) => e.stopPropagation());
+  startEl.addEventListener('touchend', (e) => { e.preventDefault(); unlockAudio(); begin(); });
+  startEl.addEventListener('click', () => { unlockAudio(); begin(); });
+  function nudgeStart() {
+    const go = startEl.querySelector('.go');
+    go.textContent = '👆 Toque na tela para ligar o som';
+    go.style.animation = 'none'; void go.offsetWidth; go.style.animation = '';
+  }
 
   // piscar de olhos
   setInterval(() => { bus.classList.add('blink'); setTimeout(() => bus.classList.remove('blink'), 140); }, 3200);
@@ -345,6 +372,7 @@
   let last = performance.now();
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    updateSound();
     let x = pollPads();
     if (keys.has('ArrowLeft')) x -= 1;
     if (keys.has('ArrowRight')) x += 1;
